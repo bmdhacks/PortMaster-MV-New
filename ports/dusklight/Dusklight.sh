@@ -24,13 +24,6 @@ cd "$GAMEDIR" || exit 1
 cp -f "$GAMEDIR/log.txt" "$GAMEDIR/log.prev.txt" 2>/dev/null
 > "$GAMEDIR/log.txt" && exec > >(tee "$GAMEDIR/log.txt") 2>&1
 
-# Field reports live or die on knowing WHICH binary is running; log it every boot.
-if sha=$(sha256sum "$GAMEDIR/dusklight.aarch64" 2>/dev/null | cut -c1-8); then
-  echo "dusklight.aarch64 sha256:${sha} size:$(stat -c %s "$GAMEDIR/dusklight.aarch64")"
-else
-  echo "WARNING: could not hash dusklight.aarch64"
-fi
-
 mkdir -p "$GAMEDIR/assets"
 
 # Look for a user-supplied disc image (GameCube/Wii .iso, or Dolphin/nodtool .rvz)
@@ -69,18 +62,7 @@ if [ "$GAMEDIR/dusklight.aarch64" -nt "$CACHE_DIR/pipeline_cache.db" ]; then
 fi
 
 export LD_LIBRARY_PATH="$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
-
-# Some CFWs (muOS) inline the whole controller-db text into $sdl_controllerconfig.
-# Our db is ~590 KB; a single env string that size blows the kernel's 128 KB
-# per-string exec limit ("Argument list too long") for every command the launcher
-# runs afterward. Route big values through the file variable instead.
-if [ "${#sdl_controllerconfig}" -gt 100000 ]; then
-  printf '%s\n' "$sdl_controllerconfig" > "$GAMEDIR/sdl_controllerdb.txt"
-  export SDL_GAMECONTROLLERCONFIG_FILE="$GAMEDIR/sdl_controllerdb.txt"
-  unset SDL_GAMECONTROLLERCONFIG sdl_controllerconfig
-else
-  export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
-fi
+export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
 
 # Pin SDL3 to the bundled shim's "sdl2" driver: aurora only takes the borrowed-EGL
 # + EFB present path under that driver, and it's the only path that reaches the
@@ -134,7 +116,6 @@ pm_platform_helper "$GAMEDIR/dusklight.aarch64" > /dev/null
 #   config.json resolves backend "auto", and the failed Vulkan attempt breaks the
 #   following EFB present init -> startup abort. This keeps a bad config bootable.
 # --log-level info: borealis log levels are words; drops the per-resource flood.
-env | awk '{ print length($0), $1 }' | sort -rn | head -8 > "$GAMEDIR/envsize.txt"
 ./dusklight.aarch64 --backend opengles --log-level info --dvd "${discs[0]}"
 
 $ESUDO kill -9 $(pidof gptokeyb2) 2>/dev/null
